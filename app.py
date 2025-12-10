@@ -2,21 +2,23 @@ import streamlit as st
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
+from google.api_core.exceptions import ResourceExhausted  # 新增：引入特定的錯誤類型
 
 # --- 1. 設定基本環境 ---
 load_dotenv()
-st.set_page_config(page_title="AI 海龜湯 v1.1", page_icon="🐢", layout="wide")
+st.set_page_config(page_title="AI 海龜湯 v1.2", page_icon="🐢", layout="wide")
 
 # 設定 AI 模型
+# 使用 gemini-1.5-flash 以獲得更快的速度和更高的免費額度限制
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel('gemini-flash-latest')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 # --- 2. 初始化遊戲狀態 ---
 if "puzzle" not in st.session_state:
     st.session_state.puzzle = ""
     st.session_state.truth = ""
     st.session_state.history = []
-    st.session_state.hint_count = 0  # 新增：紀錄提示次數
+    st.session_state.hint_count = 0
 
 # --- 3. 定義核心功能 ---
 def start_new_game(difficulty):
@@ -46,8 +48,10 @@ def start_new_game(difficulty):
         else:
             st.error("AI 產生的格式有點問題，請再試一次。")
             
+    except ResourceExhausted:
+        st.error("🐢 系統繁忙（流量管制中），請等待 30 秒後再試一次！")
     except Exception as e:
-        st.error(f"發生錯誤：{e}")
+        st.error(f"發生未知錯誤：{e}")
 
 def ask_ai(question):
     """判斷玩家的問題"""
@@ -63,8 +67,13 @@ def ask_ai(question):
     - 與此無關
     - 恭喜猜對 (只有當玩家完全說中核心手法或動機時才用這個)
     """
-    response = model.generate_content(judge_prompt)
-    return response.text.strip()
+    try:
+        response = model.generate_content(judge_prompt)
+        return response.text.strip()
+    except ResourceExhausted:
+        return "🐢 海龜累了，請休息 10 秒後再問！(流量管制)"
+    except Exception as e:
+        return f"發生錯誤：{str(e)}"
 
 def get_hint():
     """請求 AI 給一個提示"""
@@ -76,14 +85,19 @@ def get_hint():
     請給一個「微小的提示」，引導玩家思考正確的方向，但絕對不要直接說出答案關鍵字。
     提示請控制在 20 字以內。
     """
-    response = model.generate_content(hint_prompt)
-    return response.text.strip()
+    try:
+        response = model.generate_content(hint_prompt)
+        return response.text.strip()
+    except ResourceExhausted:
+        return "🐢 提示系統冷卻中，請稍後再試。"
+    except Exception as e:
+        return f"發生錯誤：{str(e)}"
 
 # --- 4. 側邊欄：控制區 ---
 with st.sidebar:
     st.title("🐢 遊戲控制")
     
-    # 新增：難度選擇
+    # 難度選擇
     difficulty = st.selectbox("選擇難度", ["簡單 (適合新手)", "普通 (燒腦)", "困難 (變態)"])
     
     if st.button("🆕 開始新的一碗湯", use_container_width=True):
@@ -92,15 +106,19 @@ with st.sidebar:
     
     st.divider()
     
-    # 新增：提示功能
+    # 提示功能
     if st.session_state.puzzle:
         st.write(f"💡 已使用提示：{st.session_state.hint_count} 次")
         if st.button("🆘 給我一點提示", use_container_width=True):
             with st.spinner("裁判正在想提示..."):
                 hint = get_hint()
-                st.session_state.history.append(("(玩家請求提示)", f"💡 提示：{hint}"))
-                st.session_state.hint_count += 1
-                st.rerun() # 重新整理頁面以顯示提示
+                # 如果回傳的是錯誤訊息，就不計次數，也不加入歷史紀錄
+                if "🐢" in hint or "錯誤" in hint:
+                    st.warning(hint)
+                else:
+                    st.session_state.history.append(("(玩家請求提示)", f"💡 提示：{hint}"))
+                    st.session_state.hint_count += 1
+                    st.rerun() # 重新整理頁面以顯示提示
 
     st.divider()
     with st.expander("🕵️ 偷看湯底 (真相)"):
