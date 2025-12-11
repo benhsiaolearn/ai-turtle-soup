@@ -11,7 +11,7 @@ st.set_page_config(page_title="AI 海龜湯 v1.2", page_icon="🐢", layout="wid
 # 設定 AI 模型
 # 使用 gemini-1.5-flash 以獲得更快的速度和更高的免費額度限制
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel('gemini-2.0-flash-lite')
+model = genai.GenerativeModel('gemini-flash-latest')
 
 # --- 2. 初始化遊戲狀態 ---
 if "puzzle" not in st.session_state:
@@ -176,6 +176,3 @@ if st.session_state.puzzle:
 
 else:
     st.write("👈 請在左側選擇難度，然後點擊「開始」！")
-
-
-
